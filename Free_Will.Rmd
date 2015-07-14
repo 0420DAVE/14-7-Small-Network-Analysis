@@ -1,0 +1,408 @@
+---
+title: "Free Will and Language: Network Analysis"
+author: "Li Ying"
+date: "1 July 2015"
+output:
+  html_document:
+    pandoc_args: [
+      "+RTS", "-K64m",
+      "-RTS"
+    ]
+---
+
+```{r load data,echo=FALSE,message=FALSE}
+library(xlsx); library(hash); library(dplyr); library(ggplot2); library(corrplot);library(vegan);library(igraph);library(BSDA);library(wordcloud)
+setwd("~/Dropbox/#0")
+source("global.R")
+# Load data
+word<-read.xlsx("./data.xlsx",
+sheetIndex=4,header=FALSE,colIndex=2:1000,rowIndex=4:76)
+
+word<-read.xlsx("./data.xlsx",sheetIndex=4,header=FALSE,colIndex=2:1000,rowIndex=4:76)
+cues<-1:73
+word<-data.frame(cue=cues,word)
+
+
+# Process freeWill data 
+freeWill<-read.xlsx("./data.xlsx", sheetIndex=2, header=T, colIndex=2:9, rowIndex=3:36)
+colnames(freeWill)<-letters[1:8]
+# Invert score of question 4 and 7
+freeWill$d<-5-freeWill$d
+freeWill$g<-5-freeWill$g
+
+freeWill<-mutate(freeWill,agg=a+b+c+d+e+f+g+h)
+#hist(freeWill$agg);
+#quantile(freeWill$agg)
+
+for (i in 1:33){
+  if (freeWill$agg[i] > mean(freeWill$agg)){
+    freeWill$ctg[i]<-"High"
+  }else{
+    freeWill$ctg[i]<-"Low"
+  }
+}
+#table(freeWill$ctg)
+Hindex<-which (freeWill$ctg %in% "High")
+Lindex<-which (freeWill$ctg %in% "Low")
+
+# Transform index to fit `word` dataset 
+f<-function(x){
+  c(3*(x-1)+1, 3*(x-1)+2,3*x)}
+
+Hindex<-f(Hindex)
+Lindex<-f(Lindex)
+```
+
+```{r function stem completion,echo=FALSE }
+stemCompletion2 <- function(x, dictionary) {
+x <- unlist(strsplit(as.character(x), " "))
+# Unexpectedly, stemCompletion completes an empty string to
+# a word in dictionary. Remove empty string to avoid above issue.
+x <- x[x != ""]
+x <- stemCompletion(x, dictionary=dictionary)
+x <- paste(x, sep="", collapse=" ")
+PlainTextDocument(stripWhitespace(x))
+}
+```
+
+```{r produce Hword and Lword,echo=FALSE,message=FALSE}
+Hword<-word[,c(1,Hindex+1)]
+Lword<-word[,c(1,Lindex+1)]
+```
+
+```{r process function,echo=FALSE,message=FALSE}
+
+process<-function(df){
+collapse<-apply(df[,-1],1,paste,collapse=" ")
+collapse<-data.frame(cue=df$cue,Assoc=collapse)
+
+# Transform text column to factor
+collapse$Assoc<-as.character(collapse$Assoc)
+# Delete NA participants; Nothing changed
+collapse<-na.omit(collapse) #dim(collapse) [1] 73  2
+
+# Clean
+require("tm")
+text_corpus<-Corpus(VectorSource(collapse$Assoc))
+clean<-tm_map(text_corpus,tolower)
+clean<-tm_map(clean,removeNumbers)
+clean<-tm_map(clean,removeWords,stopwords())
+clean<-tm_map(clean,stripWhitespace)
+clean<-tm_map(clean,PlainTextDocument)
+dic<-clean
+clean<-tm_map(clean, stemDocument)
+
+clean <- lapply(clean, stemCompletion2, dictionary=dic)
+clean <- Corpus(VectorSource(clean))
+
+
+dtm <- DocumentTermMatrix(clean)
+#uniwords<-dtm$dimnames$Terms
+#length(unique(uniwords))
+
+freq_dict<-findFreqTerms(dtm,1)
+freq <- DocumentTermMatrix(clean,list(dictionary=freq_dict))
+colnames<-freq$dimnames$Terms
+
+freq<-matrix(freq,nrow= length(cues),ncol=length(colnames),dimnames=list(cues,colnames) )
+freq<-t(freq)
+}
+```
+
+### Executive Summary
+- This report performed exploratory analysis on language pattern produced by two groups of people: `High Free Will Group` and `Low Free Will Group` (refer to as High Group (HG) and Low Group (LG) in the following text)
+- Word Cloud, Minimum spanning tree, hierarchical clustering graph, and association network were plotted. 
+- In the end, statistical test were performed on parameters of association network using *partial network analysis / bootstrape with 1000 iteration*. Detailed steps can be found in the appendix.
+- Statistical testing method refers to paper written by [Kenett, Gold and Faust( 2015)](http://scottbarrykaufman.com/wp-content/uploads/2015/06/Kenett-Gold-and-Faust-2015.pdf). Parameters of association network includes: **Diameter(D)**, [Clustering Coefficient(CC)](http://mathinsight.org/definition/clustering_coefficient), [Average Path Length(APL)](http://mathinsight.org/definition/network_mean_path_length).
+The detailed definition of these concepts can be found in the `appendix`. 
+
+#### We found that:
+- t-test shows that D and APL are significantally different between EG and IG (p.value<0.001), while CC does not show statistic significance.
+
+### Data
+- Participant number: 33
+- `Free Will`: 10 questions ***subsetted*** from *Free Will and Determinism Scale* ([Rakos et al. 2008](http://agencyandresponsibility.typepad.com/files/competing-free-will-and-responsibility-scales.pdf))
+- `Free Association task`: each participants were given 73 **cue words**. For each of cue words, they were instructed to write down 3 words/**responses** that they think is most relevant to the **cue words**. The result will be mentioned as **word data** in the following text.
+
+### Data Process
+1. Group participants into two categories: *high free will group* and *low free will group* using mean of Free Will Scale as cut-off line. 
+2. Split word association data into two: those generated by High free will group and Low free will group
+3. Clean word data. Steps includes:
+    * change all capital letter to lower case
+    * remove all numbers, stop words
+    * stem words, so that various forms derived from a stem would be taken as the same when counting word frequency
+4. Build term-document matrix. Each row represent a response and each column represent a cue word, and entry is number of occurrence of the response in cue words.
+
+### Exploratory Data Analysis
+
+#### Histogram of response number
+The number of unique response to the 73 cue words were plotted in the histogram below. High number means more spread of the response and low number suggests more clustering of the response. The distribution is normal. 
+```{r plot histogram function,echo=FALSE,message=FALSE}
+histoplot<-function(freq){
+freq[freq>=1] <- 1
+freqt<-t(freq)
+
+freqDF<-data.frame(freqt)
+freqDF<-data.frame(cue=1:73,freqDF)
+freqDF<-mutate(freqDF, response_number=apply(freqDF[,-1],1,sum))
+freqDF$response_number
+freqDF<-freqDF[,c("cue","response_number")]
+dev.off()
+par(mar=c(4,4,2,2))
+par(mfrow=c(1,2))
+hist(freqDF$response_number,main="Histogram of unique response number", xlab="No. of Associations", ylab="frequency",col = 'lightblue', border="black")
+qqnorm(freqDF$response_number, col="blue") ;qqline(freqDF$response_number, col=2)
+}
+
+
+```
+
+
+```{r process and histogram,echo=FALSE,echo=FALSE,message=FALSE}
+Hfreq<-process(Hword)
+Lfreq<-process(Lword)
+freq<-process(word)
+histoplot(freq)
+```
+
+#### Correlational Table
+Correlation Table of cue words. Most correlations are very small (less than 0.2).
+```{r plot correlational table,echo=FALSE,message=FALSE}
+#dev.off()
+corPlot<-function(freq){
+  par(mar=c(2,2,2,2))
+  corrplot(cor(freq, use="pairwise.complete.obs"), method="shade",shade.col=NA, tl.col="black", tl.cex=0.4, tl.srt=90)  
+}
+
+
+corPlot(freq)
+```
+
+#### Word Cloud
+```{r}
+par(mar=c(5,2,1,1))
+par(mfrow=c(1,2))
+cloud(Hfreq)
+cloud(Lfreq)
+```
+
+
+#### Clustering Analysis (single linkage) **Another way of presenting MST**
+Cluster Dendrogram were plotted. Both groups shows that most of the clue words merges at a high y-axis, suggesting similarity between clue words are quite low. 
+```{r  Clustering Analysis,echo=FALSE,message=FALSE}
+#dev.off()
+par(mar=c(2,2,2,2))
+par(mfrow=c(2,1))
+dis <- vegdist(t(Hfreq)); clus <- hclust(dis, "complete"); plot(clus,cex=0.6,main="High Free Will Group"); 
+rect.hclust(clus,10) # Inspect at five levels 
+
+
+dis <- vegdist(t(Lfreq)); clus <- hclust(dis, "average"); plot(clus,cex=0.6,main="Low Free Will Group"); 
+rect.hclust(clus,10) # Inspect at five levels 
+```
+
+### Minimum Spanning Trees (MST)
+Two groups were different by qualitative examination of the MST visualization. The graph of Low Free Will Group looks more modular while the High Free Will Group looks more spread out.
+```{r function MST,echo=FALSE,message=FALSE}
+# library(vegan)
+MST<-function(freq, title){
+  dis <- vegdist(t(freq))
+  tr <- spantree(dis)
+  ## Add tree to a metric scaling 
+  #plot(tr, cmdscale(dis), type = "t")
+  ## Find a configuration to display the tree neatly
+  plot(tr, type = "t",col="red",bg="yellow", pch=1,main=title,cex=0.5)
+}
+
+```
+
+```{r draw MST, echo=FALSE,message=FALSE}
+#dev.off()
+par(mar=c(2,2,2,2))
+#par(mfrow=c(1,2))
+MST(Hfreq, "High") 
+MST(Lfreq, "Low")
+```
+
+#### Association Network Graph
+- Association Network were only plotted on those cue words that have correlation > 0.2
+- The edge were colored according to correlational strength between nodes, followed sequence of red, blue and grey representing correlation >0.5, >0.4, and else.
+- The length of edge is weighted by correlational strength between nodes. 
+
+Method: [Tutorial](http://stackoverflow.com/questions/19965600/igraph-r-how-to-create-correlation-network-with-only-strong-r-values)
+
+```{r function assoc network,echo=FALSE,message=FALSE}
+# build a graph from the above matrix
+
+AssocNetPlot<-function(freq,title){
+  corTable<-cor(freq)
+  diag(corTable) <- 0
+  g <- graph.adjacency(corTable, weighted=T, mode = "undirected")
+  # Remove edge that have correlation less than 0.2
+  g <- delete.edges(g, E(g)[ weight < 0.2 ])
+  #freq# remove loops
+  g <- simplify(g)
+  # set labels and degrees of vertices
+  V(g)$label <- V(g)$name
+  V(g)$degree <- degree(g)
+  # color
+  COLS <- ifelse(E(g)$weight >= 0.5, "firebrick2", 
+                 ifelse(E(g)$weight>=0.4, "blue",
+                        ifelse(E(g)>=0.3, "grey58","grey58")))
+  E(g)$color <- COLS
+
+                                                  
+  par(mar=c(4,4,4,4))
+  
+  plot(g,vertex.size=3,vertex.label=NA,main=title) #vertex.lable=NA
+}
+```
+
+
+```{r plot network,echo=FALSE,message=FALSE}
+par(mfrow=c(1,2))
+par(mar=c(1,1,1,1))
+AssocNetPlot(Hfreq,"High")
+AssocNetPlot(Lfreq,"Low")
+#mtext("My 'Title' in a strange place", side = 3, line = 5, outer = TRUE)
+```
+      
+##### Network parameters from HIGH and LOW groups were calculated:
+
+```{r graph function,echo=FALSE,message=FALSE}
+graph<-function(freq){
+  corTable<-cor(freq)
+  diag(corTable) <- 0
+  g <- graph.adjacency(corTable, weighted=T, mode = "undirected")
+  # Remove edge that have correlation less than 0.2
+  g <- delete.edges(g, E(g)[ weight < 0.2 ])
+  #freq# remove loops
+  g <- simplify(g)
+  # set labels and degrees of vertices
+  V(g)$label <- V(g)$name
+  V(g)$degree <- degree(g)
+  g
+  }
+
+```
+
+
+```{r calculateing parameter,echo=FALSE,message=FALSE}
+Hg<-graph(Hfreq)
+Lg<-graph(Lfreq)
+g<-graph(freq)
+
+hAPL<-average.path.length(Hg); lAPL<-average.path.length(Lg)
+hD<-diameter(Hg); lD<-diameter(Lg)
+hCC<-transitivity(Hg); lCC<-transitivity(Lg)
+hdegree<-mean(degree(Hg)) ;ldegree<- mean(degree(Lg))
+
+I<-c(hAPL,lAPL,hD,lD,hCC,lCC,hdegree,ldegree)
+compare<-matrix(I,nrow=4,byrow=T)
+colnames(compare)<-c("High","Low")
+rownames(compare)<-c("APL","Diameter","CC","Degree")
+compare
+```
+
+##### Degree distribution
+Most of node do not have a lot edges with other node. But there were some nodes have lots of edges with others. Those nodes were hubs in the network that connects different clusters.  
+```{r}
+par(mar=c(4,4,4,4))
+par(mfrow=c(1,2))
+hist(degree(g),col="steelblue", main="Degree Histogram", xlab="degree/number of edge")
+plot(degree.distribution(g))
+```
+
+#### Statistical text on association network graph
+
+```{r bootstrap statistical test,echo=FALSE,message=FALSE}
+NodeIndex<-1:dim(freq)[2]
+
+comAPL<-matrix(rep(0,2000,),ncol=2);colnames(comAPL)<-c("High","Low")
+comD<-matrix(rep(0,2000,),ncol=2);colnames(comD)<-c("High","Low")
+comCC<-matrix(rep(0,2000,),ncol=2);colnames(comCC)<-c("High","Low")
+
+set.seed(134)
+for (i in 1:1000){
+  ind<-sample(NodeIndex,32,replace=F)
+  BHfreq<-Hfreq[,ind]
+  BLfreq<-Lfreq[,ind]
+  BHg<-graph(BHfreq)
+  BLg<-graph(BLfreq)
+  comAPL[i,1]=average.path.length(BHg)
+  comAPL[i,2]=average.path.length(BLg)
+  
+  comD[i,1]=diameter(BHg)
+  comD[i,2]=diameter(BLg)
+  
+  comCC[i,1]=transitivity(BHg)
+  comCC[i,2]=transitivity(BLg)
+  
+  }
+
+# Normality test
+#hist(comAPL[,1],breaks=100)
+#hist(comAPL[,2],breaks=100)
+#qqnorm(comAPL[,1], col="blue")
+#qqnorm(comAPL[,2], col="blue")
+
+
+# t-test on average path length
+#z.test(comAPL[,1],comAPL[,2],sigma.x=sd(comAPL[, 1]),sigma.y=sd(comAPL[, 1]))
+APL<-t.test(comAPL[,1],comAPL[,2])
+# t-test on diameter 
+D<-t.test(comD[,1],comD[,2])
+# t-test on cluster coefficient 
+CC<-t.test(comCC[,1],comCC[,2])
+
+```
+
+##### Summary:
+```{r stat summary,echo=FALSE,message=FALSE}
+table<-data.frame(High.Mean=c( APL$estimate[[1]], D$estimate[[1]], CC$estimate[[1]] ),
+              Low.Mean=c( APL$estimate[[2]], D$estimate[[2]], CC$estimate[[2]] ),
+              p.value=c(format(APL$p.value, scientific=F,digits=6),
+                        format(D$p.value, scientific=F,digits=6), 
+                        format(CC$p.value, scientific=F, digits=6)))
+table<-as.matrix(table)
+rownames(table)<-c("APL","D","CC")
+table
+```
+
+#### Detailed t-test result
+```{r,echo=FALSE,message=FALSE}
+# t-test on average path length
+t.test(comAPL[,1],comAPL[,2])
+# t-test on diameter 
+t.test(comD[,1],comD[,2])
+# t-test on cluster coefficient 
+t.test(comCC[,1],comCC[,2])
+```
+
+### Appendix
+##### Statistical testing on association network:
+  * "Second, we examined whether differences between the parameters of two association networks were statistically significant by applying the bootstrap method (Efron, 1979) to simulate partial random External and Internal networks and compared these networks (Kenett et al., 2013; Kenett, Anaki, et al., 2014). This procedure had a twofold rationale: 
+      *  if the two networks truly differ from each other, then any sub-network consisting of the same nodes in both networks should also be different; and 
+      *  the bootstrap method enables the generation of many simulated partial External and External networks, allowing for statistical examination of the difference between the two networks. 
+  * In order to conduct the bootstrapping procedure, half of the cue words (nodes) were randomly chosen. Then partial external and internal networks were constructed separately using these random nodes, based on the entire sample. This method is known as the without replacement bootstrap (Bertail, 1997; Politis & Romano, 1994; Shao, 2003). Finally, for each partial AS and MC network, CC, ASPL,and D measures were computed. This procedure was simulated with 1000 realizations."
+
+#### Terms:
+[Degree](http://mathinsight.org/degree_distribution)  
+[Unweighted Adjacency Matrix](http://mathinsight.org/definition/adjacency_matrix)  
+[Small Word Network](http://mathinsight.org/small_world_network): Featured by large clustering coefficient and small average path length   
+[Transitivity](http://mathinsight.org/evidence_additional_structure_real_networks#transitivity)  
+[Transitivity math](http://mathinsight.org/definition/transitivity_graph)  
+[Clustering Coefficient](http://mathinsight.org/definition/clustering_coefficient)  
+[Free Will Scale Scoring Document](http://agencyandresponsibility.typepad.com/files/competing-free-will-and-responsibility-scales.pdf)   
+[Minimum Spanning Tree Tutorial](http://cc.oulu.fi/~jarioksa/opetus/metodi/vegantutor.pdf)   
+[Average Path Length](http://mathinsight.org/definition/network_mean_path_length)
+
+
+
+
+
+
+
+
+
+

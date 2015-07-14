@@ -1,0 +1,155 @@
+---
+title: "Untitled"
+author: "Li Ying"
+date: "29 June 2015"
+output: html_document
+---
+
+```{r}
+library(xlsx); library(hash); library(dplyr); library(ggplot2); library(corrplot)
+# Load data
+setwd("~/Dropbox/#0")
+word<-read.xlsx("./data.xlsx",
+sheetIndex=4,header=FALSE,colIndex=2:1000,rowIndex=4:76)
+cues<-1:73
+
+word<-data.frame(cue=cues,word)
+
+
+
+```
+
+
+```{r}
+# collapse data
+collapse<-apply(word[,-1],1,paste,collapse=" ")
+collapse<-data.frame(cue=word$cue,Assoc=collapse)
+
+# Transform text column to factor
+collapse$Assoc<-as.character(collapse$Assoc)
+dim(collapse) #[1] 73  2
+# Delete NA participants; Nothing changed
+collapse<-na.omit(collapse)
+dim(collapse) #[1] 73  2
+
+# Clean
+require("tm")
+text_corpus<-Corpus(VectorSource(collapse$Assoc))
+clean<-tm_map(text_corpus,tolower)
+clean<-tm_map(clean,removeNumbers)
+clean<-tm_map(clean,removeWords,stopwords())
+clean<-tm_map(clean,stripWhitespace)
+clean<-tm_map(clean,PlainTextDocument)
+
+dtm <- DocumentTermMatrix(clean)
+dim(dtm) #[1]   73 1780
+uniwords<-dtm$dimnames$Terms
+length(unique(uniwords))
+```
+
+```{r}
+# reduce dataset 
+freq_dict<-findFreqTerms(dtm,1)
+freq <- DocumentTermMatrix(clean,list(dictionary=freq_dict))
+colnames<-freq$dimnames$Terms
+
+freq<-matrix(freq,nrow= length(cues),ncol=length(colnames),dimnames=list(cues,colnames) )
+freq<-t(freq)
+```
+
+### Plot histogram
+```{r}
+freqt<-t(freq)
+freqDF<-data.frame(freqt)
+freqDF<-data.frame(cue=1:73,freqDF)
+freqDF<-mutate(freqDF, response_number=apply(freqDF[,2:1781],1,sum))
+freqDF$response_number
+freqDF<-freqDF[,c("cue","response_number")]
+dev.off()
+par(mar=c(4,4,2,2))
+par(mfrow=c(1,2))
+hist(freqDF$response_number,main="Histogram of response number", xlab="No. of Associations", ylab="frequency")
+qqnorm(freqDF$response_number, col="blue") ;qqline(freqDF$response_number, col=2)
+
+```
+
+### Association Matrix
+```{r}
+corTable<-cor(freq)
+dev.off()
+par(mar=c(1,2,2,2))
+corrplot(cor(freq, use="pairwise.complete.obs"), method="shade",shade.col=NA, tl.col="black", tl.cex=0.4, tl.srt=90)  
+```
+
+### Planar Maximally Filtered Graph [***PMGF***]
+- The complete association correlation network for N target words contains N (N {1) edges.
+- Since most of the edges have small values (weak correlations), the relevant information about the network (e.g. topology, organization), can be obscured.
+- To overcome this obstacle, use complete network to construct a sub-graph that captures the most relevant information embedded in the original network. 
+- How to do that? `PMGF` -- an expansion from MST (Minimum Spanning Tree)
+
+#### Consrtuction of Planr Maximally Filtered Graph 
+- 1. order the N (N - 1) values of the correlation matrix C in decreasing rank.
+- 2. start from pair of nodes with highest correlational value, say i and j, with the highest correlation and draw a link i --> j between them.
+- 3. The process continues according to the rank order where in each iteration a link is added ***if and only if*** the resulting graph (network) is still planar, i.e. it can be drawn on the surface of a sphere without link crossing
+
+Learn this: http://www.r-bloggers.com/network-visualization-in-r-with-the-igraph-package/
+
+### Minimum Spanning Trees (MST)
+- It is a edge-weighted graph where edge length is associated with dissimilarity between variables.
+- dissimilarity is computed by [Bray–Curtis dissimilarity](https://en.wikipedia.org/wiki/Bray%E2%80%93Curtis_dissimilarity):a statistic used to quantify the compositional dissimilarity between two different sites, based on counts at each site.
+
+
+[Detailed Algorithm on MST](http://algs4.cs.princeton.edu/43mst/)
+```{r Plot Minimum Spanning Trees}
+library(vegan);
+data(dune) # 30 species on 20 cite
+dis <- vegdist(t(freq))
+tr <- spantree(dis)
+## Add tree to a metric scaling 
+plot(tr, cmdscale(dis), type = "t")
+## Find a configuration to display the tree neatly
+plot(tr, type = "t")
+```
+
+### Plot graph. Association matrix can only be plotted on sqaure matrix
+Method: [Tutorial](http://stackoverflow.com/questions/19965600/igraph-r-how-to-create-correlation-network-with-only-strong-r-values)
+```{r}
+library(igraph)
+
+# build a graph from the above matrix
+diag(corTable) <- 0
+g <- graph.adjacency(corTable, weighted=T, mode = "undirected")
+g <- delete.edges(g, E(g)[ weight < 0.2 ])
+#freq# remove loops
+g <- simplify(g)
+# set labels and degrees of vertices
+V(g)$label <- V(g)$name
+V(g)$degree <- degree(g)
+par(mar=c(2,2,2,2))
+plot(g,vertex.size=3,vertex.label=NA)
+```
+
+
+### Calculate parameters
+```{r}
+average.path.length(g)
+diameter(g)
+transitivity(g)
+mean(degree(g))
+par(mar=c(4,4,4,4))
+hist(degree(g),col="steelblue", main="Degree Histogram", xlab="degree/number of edge")
+plot(degree.distribution(g))
+```
+
+
+### Note
+[Degree](http://mathinsight.org/degree_distribution)
+[Unweighted Adjacency Matrix](http://mathinsight.org/definition/adjacency_matrix)
+[Small Word Network](http://mathinsight.org/small_world_network): Featured by large clustering coefficient and small average path length 
+[Transitivity](http://mathinsight.org/evidence_additional_structure_real_networks#transitivity)
+[Transitivity math](http://mathinsight.org/definition/transitivity_graph)
+[Clustering Coefficient](http://mathinsight.org/definition/clustering_coefficient)
+
+[Free Will Scale Scoring Document](http://agencyandresponsibility.typepad.com/files/competing-free-will-and-responsibility-scales.pdf)
+[Minimum Spanning Tree Tutorial](http://cc.oulu.fi/~jarioksa/opetus/metodi/vegantutor.pdf)
+

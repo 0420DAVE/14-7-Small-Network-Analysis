@@ -1,0 +1,270 @@
+---
+title: 'Locus of Control and Language: Network Analysis'
+author: "Li Ying"
+date: "12 July 2015"
+output: html_document
+---
+```{r load data,echo=FALSE,message=FALSE}
+library(xlsx); library(hash); library(dplyr); library(ggplot2); library(corrplot);library(vegan);library(igraph);library(BSDA);library(wordcloud)
+setwd("~/Dropbox/#0")
+source("global.R")
+
+# Load data
+word<-read.xlsx("./data.xlsx",
+sheetIndex=4,header=FALSE,colIndex=2:1000,rowIndex=4:76)
+
+word<-read.xlsx("./data.xlsx",sheetIndex=4,header=FALSE,colIndex=2:1000,rowIndex=4:76)
+cues<-1:73
+word<-data.frame(cue=cues,word)
+
+# process with locus of control data
+control<-read.xlsx("./data.xlsx", sheetIndex=1, header=T, colIndex=2:30, rowIndex=3:36)
+# delete filler questions
+#control<-control[,-c (1, 8, 14, 19, 24, 27)]
+# calculate scorre according to scoring instruction
+a<-c(3,4,5,10:13,15,22,26,28)
+b<-c(2,6,7,9,16:18,20,21,23,25,29)
+score<-apply(control[,a]=="a",1,sum)+apply(control[,b]=="b",1,sum)
+control<-data.frame(id=1:33,score=score)
+```
+
+
+```{r prepare group and tdm,echo=FALSE,message=FALSE}
+for (i in 1:33){
+  if (control$score[i] > mean(control$score)){
+    control$ctg[i]<-"High"
+  }else{
+    control$ctg[i]<-"Low"
+  }
+}
+#table(control$ctg)
+Hindex<-which (control$ctg %in% "High")
+Lindex<-which (control$ctg %in% "Low")
+
+# Transform index to fit `word` dataset 
+f<-function(x){
+  c(3*(x-1)+1, 3*(x-1)+2,3*x)}
+
+Hindex<-f(Hindex)
+Lindex<-f(Lindex)
+
+# split word data by high/low control score
+Hword<-word[,c(1,Hindex+1)]
+Lword<-word[,c(1,Lindex+1)]
+
+#Hindex<-sample(1:93,47) #
+#Lindex<-c(1:93)[-Hindex] #
+#Hword<-word[,c(1,Hindex+1)] #
+#Lword<-word[,c(1,Lindex+1)] #
+
+Hfreq<-process(Hword)
+Lfreq<-process(Lword)
+freq<-process(word)
+#histoplot(freq)
+```
+
+### Executive Summary 
+- This report performed exploratory analysis on language pattern produced by two groups of people: `External locus control` and `Internal locus control` (refer to as External Group (EG) and Internal Group (IG) in the following text)
+- Word Cloud, Minimum spanning tree, hierarchical clustering graph, and association network were plotted. 
+- In the end, statistical test were performed on parameters of association network using *partial network analysis / bootstrape with 1000 iteration*. Detailed steps can be found in the appendix.
+- Statistical testing method refers to paper written by [Kenett, Gold and Faust( 2015)](http://scottbarrykaufman.com/wp-content/uploads/2015/06/Kenett-Gold-and-Faust-2015.pdf). Parameters of association network includes: **Diameter(D)**, [Clustering Coefficient(CC)](http://mathinsight.org/definition/clustering_coefficient), [Average Path Length(APL)](http://mathinsight.org/definition/network_mean_path_length).
+The detailed definition of these concepts can be found in the `appendix`. 
+
+#### We found that:
+- t-test shows that D and CC are significantally different between EG and IG, while APL shows marginal significance.
+
+### Data Source
+- Number of participants: 33
+- `Locus of Control`: [Rotter Internal-External Locus of Control Scale, (Rotter, 1966)](http://www.wilderdom.com/psychology/loc/RotterLOC29.html)
+- `Free Association task`: each participants were given 73 **cue words**. For each of cue words, they were instructed to write down 3 words/responses that they think is most relevant to the **cue words**. The result will be mentioned as **word data** in the following text.
+
+  - Other information on *locus of control* can be found here:
+    * [Rotter's Scoring Instruction](http://www.wilderdom.com/psychology/loc/RotterLOC29Scoring.html)
+    * [What is locus of control?](http://www.wilderdom.com/psychology/loc/LocusOfControlWhatIs.html#InternalExternal)
+    * [28 measures of locus of control](http://teachinternalcontrol.com/uploads/LOC_Measures__1_.pdf)
+
+### Data Process
+- Control score were averaged for each participants. Participants were categorized into External Group (Low in locus of control) and Internal Group (High in locus of control) using group mean as cut-off line. 
+- Steps 2, 3, 4 are identical to `Free Will and Language: Network Analysis`.
+
+### Exploratory Data Analysis
+#### Normal Distribution of locus of control score
+```{r normal text on locus of control,fig.height=4,fig.width=8,echo=FALSE}
+par(mar=c(2,2,2,2))
+par(mfrow=c(1,2))
+hist(control$score,cex=1,col="steelblue",main="locus of control",xlab="score");qqnorm(control$score);qqline(control$score,col=2)
+```
+
+#### Distribution of number of unique response of each cue words
+```{r hist wordfreq,fig.height=4,fig.width=8,echo=FALSE}
+par(mar=c(1,1,1,1))
+par(mfrow=c(1,2))
+histoplot(freq)
+```
+
+#### Word Cloud   
+[Tutorial](https://trinkerrstuff.wordpress.com/2012/11/13/gradient-word-clouds/)    
+
+```{r word cloud,echo=FALSE}
+par(mar=c(7,1,1,1))
+par(mfrow=c(1,2))
+cloud(Hfreq)
+cloud(Lfreq)
+```
+
+#### Clustering Analysis (single linkage)
+```{r  Clustering Analysis,echo=FALSE,message=FALSE}
+#dev.off()
+par(mar=c(2,2,2,2))
+par(mfrow=c(2,1))
+dis <- vegdist(t(Hfreq)); clus <- hclust(dis, "average"); plot(clus,cex=0.6,main="Internal Locus of Control"); 
+rect.hclust(clus,10) # Inspect at five levels 
+
+
+dis <- vegdist(t(Lfreq)); clus <- hclust(dis, "average"); plot(clus,cex=0.6,main="External Locus of Control"); 
+rect.hclust(clus,10) # Inspect at five levels 
+```
+
+
+#### Minimum Spanning Trees (MST)
+```{r draw MST, echo=FALSE,message=FALSE,error=FALSE,warning=FALSE}
+#dev.off()
+par(mar=c(2,2,2,2))
+par(mfrow=c(1,1))
+MST(Hfreq, "High") 
+MST(Lfreq, "Low")
+```
+
+#### Association Network Graph
+- Association Network were only plotted on those cue words that have correlation > 0.2
+- The edge were colored according to correctional strength between nodes, followed sequence of red, blue and grey representing correlation >0.5, >0.4, and else.
+- The length of edge is weighted by correlational strength between nodes. 
+
+Method: [Tutorial](http://stackoverflow.com/questions/19965600/igraph-r-how-to-create-correlation-network-with-only-strong-r-values)
+
+```{r plot network,echo=FALSE,message=FALSE}
+par(mfrow=c(1,1))
+par(mar=c(1,1,1,1))
+AssocNetPlot(Hfreq,"Internal")
+AssocNetPlot(Lfreq,"External")
+#mtext("My 'Title' in a strange place", side = 3, line = 5, outer = TRUE)
+```
+
+##### Network parameters from `Internal` and `External` groups were calculated:
+```{r calculateing parameter,echo=FALSE,message=FALSE}
+Hg<-graph(Hfreq)
+Lg<-graph(Lfreq)
+g<-graph(freq)
+
+hAPL<-average.path.length(Hg); lAPL<-average.path.length(Lg)
+hD<-diameter(Hg); lD<-diameter(Lg)
+hCC<-transitivity(Hg); lCC<-transitivity(Lg)
+hdegree<-mean(degree(Hg)) ;ldegree<- mean(degree(Lg))
+
+I<-c(hAPL,lAPL,hD,lD,hCC,lCC,hdegree,ldegree)
+compare<-matrix(I,nrow=4,byrow=T)
+colnames(compare)<-c("High","Low")
+rownames(compare)<-c("APL","Diameter","CC","Degree")
+compare
+```
+
+##### Degree distribution
+
+Most of nodes do not have a lot edges with other nodes. But there are some nodes having lots of connections. Those nodes could be hubs in the network that connects between different clusters.  
+```{r,echo=FALSE}
+par(mar=c(2,2,2,2))
+par(mfrow=c(2,2))
+hist(degree(Hg),col="steelblue", main="Degree Histogram | Internal", xlab="degree/number of edge")
+plot(degree.distribution(Hg),main="Internal",col="steelblue")
+
+hist(degree(Lg),col="steelblue", main="Degree Histogram | External", xlab="degree/number of edge")
+plot(degree.distribution(Lg), main="External",col="steelblue")
+
+
+```
+
+#### Statistical text on social network graph
+**Diameter** and **clustering coefficient** show statistical significance between two groups (**p-value < 0.05**). Average path length shows marginally significance (p<0.06)
+
+```{r bootstrap statistical test,echo=FALSE,message=FALSE}
+NodeIndex<-1:dim(freq)[2]
+
+comAPL<-matrix(rep(0,2000,),ncol=2);colnames(comAPL)<-c("High","Low")
+comD<-matrix(rep(0,2000,),ncol=2);colnames(comD)<-c("High","Low")
+comCC<-matrix(rep(0,2000,),ncol=2);colnames(comCC)<-c("High","Low")
+
+set.seed(134)
+for (i in 1:1000){
+  ind<-sample(NodeIndex,32,replace=F)
+  BHfreq<-Hfreq[,ind]
+  BLfreq<-Lfreq[,ind]
+  BHg<-graph(BHfreq)
+  BLg<-graph(BLfreq)
+  comAPL[i,1]=average.path.length(BHg)
+  comAPL[i,2]=average.path.length(BLg)
+  
+  comD[i,1]=diameter(BHg)
+  comD[i,2]=diameter(BLg)
+  
+  comCC[i,1]=transitivity(BHg)
+  comCC[i,2]=transitivity(BLg)
+  
+  }
+
+# Normality test
+#hist(comAPL[,1],breaks=100)
+#hist(comAPL[,2],breaks=100)
+#qqnorm(comAPL[,1], col="blue")
+#qqnorm(comAPL[,2], col="blue")
+
+
+# t-test on average path length
+#z.test(comAPL[,1],comAPL[,2],sigma.x=sd(comAPL[, 1]),sigma.y=sd(comAPL[, 1]))
+APL<-t.test(comAPL[,1],comAPL[,2])
+# t-test on diameter 
+D<-t.test(comD[,1],comD[,2])
+# t-test on cluster coefficient 
+CC<-t.test(comCC[,1],comCC[,2])
+
+```
+
+##### Summary:
+
+```{r stat summary,echo=FALSE,message=FALSE}
+table<-data.frame(High.Mean=c( APL$estimate[[1]], D$estimate[[1]], CC$estimate[[1]] ),
+              Low.Mean=c( APL$estimate[[2]], D$estimate[[2]], CC$estimate[[2]] ),
+              p.value=c(format(APL$p.value, scientific=F,digits=3),
+                        format(D$p.value, scientific=F,digits=3), 
+                        format(CC$p.value, scientific=F, digits=3)))
+table<-as.matrix(table)
+rownames(table)<-c("APL","D","CC")
+table
+```
+
+Detailed information on t-test
+```{r}
+# t-test on average path length
+t.test(comAPL[,1],comAPL[,2])
+# t-test on diameter 
+t.test(comD[,1],comD[,2])
+# t-test on cluster coefficient 
+t.test(comCC[,1],comCC[,2])
+```
+
+### Appendix
+##### Statistical testing on association network:
+  * "Second, we examined whether differences between the parameters of two association networks were statistically significant by applying the bootstrap method (Efron, 1979) to simulate partial random External and Internal networks and compared these networks (Kenett et al., 2013; Kenett, Anaki, et al., 2014). This procedure had a twofold rationale: 
+      *  if the two networks truly differ from each other, then any sub-network consisting of the same nodes in both networks should also be different; and 
+      *  the bootstrap method enables the generation of many simulated partial External and External networks, allowing for statistical examination of the difference between the two networks. 
+  * In order to conduct the bootstrapping procedure, half of the cue words (nodes) were randomly chosen. Then partial external and internal networks were constructed separately using these random nodes, based on the entire sample. This method is known as the without replacement bootstrap (Bertail, 1997; Politis & Romano, 1994; Shao, 2003). Finally, for each partial AS and MC network, CC, ASPL,and D measures were computed. This procedure was simulated with 1000 realizations."
+
+###### Terms:
+[Degree](http://mathinsight.org/degree_distribution)  
+[Unweighted Adjacency Matrix](http://mathinsight.org/definition/adjacency_matrix)  
+[Small Word Network](http://mathinsight.org/small_world_network): Featured by large clustering coefficient and small average path length   
+[Transitivity](http://mathinsight.org/evidence_additional_structure_real_networks#transitivity)  
+[Transitivity math](http://mathinsight.org/definition/transitivity_graph)  
+[Clustering Coefficient](http://mathinsight.org/definition/clustering_coefficient)  
+[Free Will Scale Scoring Document](http://agencyandresponsibility.typepad.com/files/competing-free-will-and-responsibility-scales.pdf)   
+[Minimum Spanning Tree Tutorial](http://cc.oulu.fi/~jarioksa/opetus/metodi/vegantutor.pdf)   
+[Average Path Length](http://mathinsight.org/definition/network_mean_path_length)

@@ -1,0 +1,100 @@
+---
+title: "iGraph Tutorial"
+author: "Li Ying"
+date: "1 July 2015"
+output: html_document
+---
+##2.1 Creating graphs
+
+- The objects we study in this course are graphs (or networks).  
+- They consist of a set of nodes and a set of edges.  
+- In this command, we are assigning to the variable g a graph that has nodes V = {1,2,3,4,5} and has edges E = {(1,2),(1,3),(2,3),(3,5)}
+```{r}
+library(igraph)
+g <- graph( c(1,2, 1,3, 2,3, 3,5), n=5 )
+V(g)
+E(g)
+
+```
+
+#### Add nodes and edges to an already existing graph, e.g.:
+
+```{r}
+g <- graph.empty() + vertices(letters[1:10], color="red"); plot(g)
+g <- g + vertices(letters[11:20], color="blue"); plot(g)
+g <- g + edges(sample(V(g), 30, replace=TRUE), color="green");plot(g)
+V(g)
+
+
+```
+
+###A bug: can't start with 0
+```{r}
+karate <- read.graph("http://cneurocvs.rmki.kfki.hu/igraph/karate.net", format="pajek")
+V(g); vcount(g)
+E(g); ecount(g)
+```
+
+### Manipulating attributes in graphs
+```{r}
+g <- erdos.renyi.game(8, 0.5); plot(g) # generate a random graph with 10 nodes, assigns
+V(g)$color <- sample( c("red", "black"), vcount(g), rep=TRUE); plot(g) # Assign random color to node
+E(g)$color <- "grey"; plot(g) # Color all edge in grey
+red <- V(g)[ color == "red" ]
+bl <- V(g)[ color == "black" ]
+E(g)[ red %--% red ]$color <- "red"; plot(g) 
+E(g)[ bl %--% bl ]$color <- "black"; plot(g) 
+
+
+#The next example assigns random weights to a lattice graph and then colors the ones having weight over 0.9 red, and the rest grey.
+dev.off()
+g <- graph.lattice( c(10,10) )
+E(g)$weight <- runif(ecount(g))
+E(g)$color <- "grey"
+E(g)[ weight > 0.9 ]$color <- "red"
+plot(g)
+
+# a more refined version
+dev.off()
+g <- graph.lattice( c(10,10) )
+E(g)$weight <- runif(ecount(g))
+E(g)$color <- "grey"
+E(g)[ weight > 0.9 ]$color <- "red"
+plot(g, vertex.size=2, vertex.label=NA, layout=layout.kamada.kawai,
+edge.width=2+3*E(g)$weight)
+
+```
+
+### Visualizing graphs
+A very important part in the analysis of networks is being able to visualize them. As an example the following commands render the three graphs depicted in the figure below.
+```{r}
+er_graph <- erdos.renyi.game(100, 2/100)
+plot(er_graph, vertex.label=NA, vertex.size=3) # change size and lable #Erd ̈os-R ́enyi
+ws_graph <- watts.strogatz.game(1, 100, 4, 0.05)
+plot(ws_graph, layout=layout.circle, vertex.label=NA, vertex.size=3) #Watts-Strogatz
+ba_graph <- barabasi.game(100)
+plot(ba_graph, vertex.label=NA, vertex.size=3) #Barab ́asi-Albert
+
+```
+
+The plot command is very flexible and has many parameters that control the behavior of the visualization. For greater details: [click](http://127.0.0.1:28744/library/igraph/html/plot.common.html)
+
+### Measuring graph
+- `average.path.length`
+- `diameter`
+- `clustering coefficient` or `transitivity`
+```{r}
+g <- graph.lattice( length=100, dim=1, nei=4 )
+average.path.length(g)
+diameter(g)
+
+ws <- watts.strogatz.game(1, 100, 4, 0.05)
+plot(ws)
+transitivity(ws)
+degree(ws)
+hist(degree(ws))
+plot(degree.distribution(ws))
+```
+
+
+

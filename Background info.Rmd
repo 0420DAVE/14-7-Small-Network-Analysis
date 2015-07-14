@@ -1,0 +1,22 @@
+---
+title: "Association Matrix"
+author: "Li Ying"
+date: "30 June 2015"
+output: html_document
+---
+
+Global features —> association correlations: correlation between target words (Cue Words), based on their association responses similarity.
+
+Local features —> association dependencies —> influence that words have in network on the other words. 
+
+Semantic memory can be represented by a association network with node and edges:
+nodes: —> concept
+edges: —>  relationship between concept
+
+### Small Word Network 
+Small World Network (SWN) refers to networks which are made up of many `sub-clusters` and relatively short path lengths between these sub-clusters, and has been found to successfully describe a wide range of sociological, technological and biological networks. 
+
+Two main characteristics of small world networks are: `networks clustering coefficient` and its `average shortest path length`. ***Clustering coefficient*** refers to the probability that two neighbors (a neighbor is a node j that is connected through an edge to node i) of a randomly chosen node will themselves be neighbors. ***Average shortest path length*** refers to the average shortest amount of steps (nodes being traversed) needed to be taken between any two pair of random nodes. A small world network is characterized by having a large clustering coefficient and a short average shortest path length.
+
+Third characteristics:`degree distribution [P(k)]`: the distribution of amount of edges (k) per node in the network. This characteristic is significant due to the fact that complex systems do not abide to the Gaussian (normal) distribution, and rather present scaling law distributions (such as exponential, or power-law). In fact, the shape of a networks distribution provides a unique and characteristic signature for different kinds of network structure and processes of network growth
+

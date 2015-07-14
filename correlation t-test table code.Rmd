@@ -1,0 +1,81 @@
+---
+title: "Untitled"
+author: "Li Ying"
+date: "13 July 2015"
+output: html_document
+---
+```{r load data,echo=FALSE,message=FALSE}
+library(xlsx); library(hash); library(dplyr); library(ggplot2); library(corrplot);library(vegan);library(igraph);library(BSDA);library(wordcloud)
+setwd("~/Dropbox/#0")
+source("global.R")
+
+# Load data
+word<-read.xlsx("./data.xlsx",
+sheetIndex=4,header=FALSE,colIndex=2:1000,rowIndex=4:76)
+
+word<-read.xlsx("./data.xlsx",sheetIndex=4,header=FALSE,colIndex=2:1000,rowIndex=4:76)
+cues<-1:73
+word<-data.frame(cue=cues,word)
+
+# process with locus of control data
+control<-read.xlsx("./data.xlsx", sheetIndex=1, header=T, colIndex=2:30, rowIndex=3:36)
+# delete filler questions
+#control<-control[,-c (1, 8, 14, 19, 24, 27)]
+# calculate scorre according to scoring instruction
+a<-c(3,4,5,10:13,15,22,26,28)
+b<-c(2,6,7,9,16:18,20,21,23,25,29)
+score<-apply(control[,a]=="a",1,sum)+apply(control[,b]=="b",1,sum)
+control<-data.frame(id=1:33,score=score)
+```
+
+
+```{r prepare group and tdm,echo=FALSE,message=FALSE}
+for (i in 1:33){
+  if (control$score[i] > mean(control$score)){
+    control$ctg[i]<-"High"
+  }else{
+    control$ctg[i]<-"Low"
+  }
+}
+#table(control$ctg)
+Hindex<-which (control$ctg %in% "High")
+Lindex<-which (control$ctg %in% "Low")
+
+# Transform index to fit `word` dataset 
+f<-function(x){
+  c(3*(x-1)+1, 3*(x-1)+2,3*x)}
+
+#Hindex<-f(Hindex)
+#Lindex<-f(Lindex)
+
+# split word data by high/low control score
+#Hword<-word[,c(1,Hindex+1)]
+#Lword<-word[,c(1,Lindex+1)]
+
+#Hindex<-sample(1:93,47) #
+#Lindex<-c(1:93)[-Hindex] #
+#Hword<-word[,c(1,Hindex+1)] #
+#Lword<-word[,c(1,Lindex+1)] #
+
+#Hfreq<-process(Hword)
+#Lfreq<-process(Lword)
+#freq<-process(word)
+
+```
+
+Tword<-transform(word)
+#HTword<-Tword[Hindex,]
+#LTword<-Tword[Lindex,]
+
+Tfreq<-processX(Tword,15)
+cal<-data.frame(score=control$score,Tfreq)
+cordata<-as.numeric(rep(0,(dim(cal)[2]-1) ) )
+for (i in 1: (dim(cal)[2]-1)) {
+    cordata[i]<-cor(cal[,1],cal[,(i+1)])
+}
+par(mar=c(2,2,2,2))
+hist(cordata,col="steelblue",breaks=10)
+
+model1<-lm(cal[,13]~score  ,data=cal)
+summary(model1)
+
